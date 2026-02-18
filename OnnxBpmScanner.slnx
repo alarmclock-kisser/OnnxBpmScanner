@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="OnnxBpmScanner.Cli/OnnxBpmScanner.Cli.csproj" />
+  <Project Path="OnnxBpmScanner.Core/OnnxBpmScanner.Core.csproj" />
+  <Project Path="OnnxBpmScanner.Runtime/OnnxBpmScanner.Runtime.csproj" />
+</Solution>

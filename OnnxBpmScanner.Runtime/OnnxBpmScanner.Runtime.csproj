@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
+    <PackageReference Include="MathNet.Numerics.MKL.Win-x64" Version="3.0.0" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.23.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OnnxBpmScanner.Core\OnnxBpmScanner.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Ressources\beat_this.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Ressources\Audios\" />
+  </ItemGroup>
+
+</Project>
