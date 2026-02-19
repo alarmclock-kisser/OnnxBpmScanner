@@ -18,40 +18,60 @@ namespace OnnxBpmScanner.Runtime
 
 
 
-        public string[] GetAudioFiles(string? customDirectory = null)
+        public string[] GetAudioFiles(string? customDirectory = null, string[]? extensions = null)
         {
+            extensions ??= new[] { ".wav", ".mp3", ".flac" };
+
             string audioPath = this.InputDirectory;
             if (customDirectory != null)
             {
                 audioPath = customDirectory;
+
+                if (customDirectory.StartsWith("/repo", StringComparison.OrdinalIgnoreCase))
+                {
+                    audioPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Ressources");
+                }
+                if (customDirectory.StartsWith("/mymusic", StringComparison.OrdinalIgnoreCase))
+                {
+                    audioPath = Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic));
+                }
             }
 
             // Get wav, mp3, flac files
             var audioFiles = Directory.GetFiles(audioPath, "*.*", SearchOption.AllDirectories)
-                .Where(f => f.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) ||
-                            f.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase) ||
-                            f.EndsWith(".flac", StringComparison.OrdinalIgnoreCase))
+                .Where(f => extensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
                 .ToArray();
 
             this.AudioFiles.AddRange(audioFiles);
-
-            foreach (var file in audioFiles)
-            {
-                StaticLogger.Log($"Found audio file: {file}");
-            }
 
             return this.AudioFiles.ToArray();
         }
 
 
 
-        public async Task<Dictionary<string, double?>> EstimateBpmForAllAudioFilesAsync(IProgress<double>? progress = null)
+        public async Task<Dictionary<string, double?>> EstimateBpmForAllAudioFilesAsync(IProgress<double>? progress = null, int maxFiles = 0, int maxAudioDurationMinutes = 0)
         {
             var results = new ConcurrentDictionary<string, double?>();
             int totalFiles = this.AudioFiles.Count;
             int processedFiles = 0;
             foreach (var file in this.AudioFiles)
             {
+                if (maxFiles > 0 && processedFiles >= maxFiles)
+                {
+                    StaticLogger.Log("Max files limit reached.");
+                    break;
+                }
+
+                if (maxAudioDurationMinutes > 0)
+                {
+                    double minutes = AudioHandling.GetAudioDuration(file)?.TotalMinutes ?? 0;
+                    if (minutes > maxAudioDurationMinutes)
+                    {
+                        StaticLogger.Log($"Skipping {file} due to duration {minutes:F2} min exceeding limit.");
+                        continue;
+                    }
+                }
+
                 Stopwatch sw = Stopwatch.StartNew();
 
                 double? bpm = await this.RunInferenceBpmEstimateAsync(file, progress);

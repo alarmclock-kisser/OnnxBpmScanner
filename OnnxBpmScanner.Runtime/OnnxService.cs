@@ -47,6 +47,11 @@ namespace OnnxBpmScanner.Runtime
 
         public bool LoadModel(string modelPath, int dmlDeviceId = 0)
         {
+            if (modelPath.StartsWith("/ressource"))
+            {
+                return this.LoadModelFromRessource(dmlDeviceId);
+            }
+
             if (modelPath.StartsWith("/default"))
             {
                 modelPath = this.ModelPaths.Count > 0 ? this.ModelPaths[0] : string.Empty;
@@ -105,6 +110,47 @@ namespace OnnxBpmScanner.Runtime
             return true;
         }
 
+        public bool LoadModelFromRessource(int dmlDeviceId = 0)
+        {
+            try
+            {
+                var assembly = typeof(OnnxService).Assembly;
+                // Der Name muss exakt sein: [ProjektNamespace].[Ordner].[Dateiname]
+                string resourceName = "OnnxBpmScanner.Runtime.Ressources.beat_this.onnx";
+
+                using Stream? stream = assembly.GetManifestResourceStream(resourceName);
+                if (stream == null) return false;
+
+                using MemoryStream ms = new MemoryStream();
+                stream.CopyTo(ms);
+                byte[] modelBytes = ms.ToArray();
+
+                this.LoadedModelPath = resourceName;
+
+                try
+                {
+                    var options = new SessionOptions();
+                    options.AppendExecutionProvider_DML(dmlDeviceId);
+
+                    this._session = new InferenceSession(modelBytes, options);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    StaticLogger.Log($"DirectML not available: {ex.Message}");
+                    StaticLogger.Log("Falling back to CPU execution provider.");
+                    var options = new SessionOptions();
+                    options.AppendExecutionProvider_CPU();
+                    this._session = new InferenceSession(modelBytes, options);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                StaticLogger.Log($"Resource Load Error: {ex.Message}");
+                return false;
+            }
+        }
 
 
         public void DisposeSession()

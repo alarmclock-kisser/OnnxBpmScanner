@@ -293,6 +293,21 @@ namespace OnnxBpmScanner.Core
 
 
 
+        // Get estimate duration from file without fully loading it
+        public static TimeSpan? GetAudioDuration(string filePath)
+        {
+            try
+            {
+                using var reader = new AudioFileReader(filePath);
+                return reader.TotalTime;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+
 
 
         public bool RemoveAudio(AudioObj audioObj)

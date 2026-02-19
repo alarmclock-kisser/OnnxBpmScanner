@@ -23,6 +23,8 @@ namespace OnnxBpmScanner.Cli
             string? modelPath = "/default";
             string? audioDirectory = Directory.GetCurrentDirectory();
             List<string> audioFiles = new List<string>();
+            int maxFiles = 0; // No limit
+            int maxDurationMinutes = 0; // No limit
             int directMlDeviceId = 0;
             bool writeBpmTags = false;
 
@@ -134,6 +136,10 @@ namespace OnnxBpmScanner.Cli
                         if (!string.IsNullOrWhiteSpace(v))
                         {
                             audioDirectory = v;
+                            if (audioDirectory.StartsWith("/mymusic", StringComparison.OrdinalIgnoreCase))
+                            {
+                                audioDirectory = Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic));
+                            }
                         }
                     }
 
@@ -151,6 +157,17 @@ namespace OnnxBpmScanner.Cli
                             }
                         }
                     }
+
+                    if (!hasAudioDirArg && root.TryGetProperty("MaxFiles", out var maxF) && maxF.ValueKind == JsonValueKind.String)
+                    {
+                        maxFiles = maxF.GetInt32();
+                    }
+
+                    if (!hasAudioDirArg && root.TryGetProperty("MaxAudioDurationMinutes", out var maxAD) && maxAD.ValueKind == JsonValueKind.String)
+                    {
+                        maxDurationMinutes = maxAD.GetInt32();
+                    }
+
 
                     if (!hasDeviceArg && root.TryGetProperty("DirectMlDeviceId", out var dml) && dml.ValueKind == JsonValueKind.Number)
                     {
@@ -200,7 +217,7 @@ namespace OnnxBpmScanner.Cli
                 Console.Out.Flush();
             });
 
-            var results = await onnx.EstimateBpmForAllAudioFilesAsync(progress);
+            var results = await onnx.EstimateBpmForAllAudioFilesAsync(progress, maxFiles, maxDurationMinutes);
 
             // Print results
             Console.WriteLine("-----");
