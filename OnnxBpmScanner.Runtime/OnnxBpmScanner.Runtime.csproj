@@ -20,6 +20,7 @@
     <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
     <PackageReference Include="MathNet.Numerics.MKL.Win-x64" Version="3.0.0" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.23.0" />
+    <PackageReference Include="Vortice.DXGI" Version="3.8.2" />
   </ItemGroup>
 
   <ItemGroup>

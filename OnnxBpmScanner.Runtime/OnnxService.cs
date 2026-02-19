@@ -15,10 +15,16 @@ namespace OnnxBpmScanner.Runtime
         private InferenceSession? _session = null;
 
 
+        private DxgiHelper _dxgiHelper = new();
+        public List<string> DirectMlDevices { get; private set; } = [];
 
-        public OnnxService(string? customDirectory = null, string? loadModel = "/default", string? audioDirectory = null)
+
+
+        public OnnxService(string? customDirectory = null, string? loadModel = null, string? audioDirectory = null)
         {
             MathNet.Numerics.Control.UseNativeMKL();
+
+            this.DirectMlDevices = this._dxgiHelper.GetDirectMlDevices();
 
             this.GetModelPaths(customDirectory);
             this.GetAudioFiles(audioDirectory);
@@ -47,12 +53,12 @@ namespace OnnxBpmScanner.Runtime
 
         public bool LoadModel(string modelPath, int dmlDeviceId = 0)
         {
-            if (modelPath.StartsWith("/ressource"))
+            if (modelPath.StartsWith("/res", StringComparison.OrdinalIgnoreCase))
             {
                 return this.LoadModelFromRessource(dmlDeviceId);
             }
 
-            if (modelPath.StartsWith("/default"))
+            if (modelPath.StartsWith("/default", StringComparison.OrdinalIgnoreCase))
             {
                 modelPath = this.ModelPaths.Count > 0 ? this.ModelPaths[0] : string.Empty;
             }
@@ -119,7 +125,10 @@ namespace OnnxBpmScanner.Runtime
                 string resourceName = "OnnxBpmScanner.Runtime.Ressources.beat_this.onnx";
 
                 using Stream? stream = assembly.GetManifestResourceStream(resourceName);
-                if (stream == null) return false;
+                if (stream == null)
+                {
+                    return false;
+                }
 
                 using MemoryStream ms = new MemoryStream();
                 stream.CopyTo(ms);
@@ -151,6 +160,14 @@ namespace OnnxBpmScanner.Runtime
                 return false;
             }
         }
+
+
+
+        
+
+
+
+
 
 
         public void DisposeSession()

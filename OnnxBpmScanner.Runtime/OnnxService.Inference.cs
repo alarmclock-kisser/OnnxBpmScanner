@@ -29,7 +29,7 @@ namespace OnnxBpmScanner.Runtime
 
                 if (customDirectory.StartsWith("/repo", StringComparison.OrdinalIgnoreCase))
                 {
-                    audioPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Ressources");
+                    audioPath = Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory);
                 }
                 if (customDirectory.StartsWith("/mymusic", StringComparison.OrdinalIgnoreCase))
                 {
@@ -104,145 +104,158 @@ namespace OnnxBpmScanner.Runtime
 
             try
             {
-                audioObj = await this.AudioHandler.ImportAudioAsync(audioFilePath);
+                // 1. Audio-Import (schon asynchron in AudioHandling.cs)
+                audioObj = await this.AudioHandler.ImportAudioAsync(audioFilePath).ConfigureAwait(false);
                 if (audioObj == null) return null;
 
-                StaticLogger.Log($"Processing {audioObj.Name}...");
+                await StaticLogger.LogAsync($"Processing {audioObj.Name}...").ConfigureAwait(false);
+                progress?.Report(0.01);
 
-                // 1. Mono & High-Quality Resampling (0% - 10%)
-                if (audioObj.Channels != 1) await audioObj.RechannelAsync(1);
+                // Vorbereitung der Parameter
+                const int nFft = 1024;
+                const int hop = 512;
+                const int nMels = 128;
                 const int targetSR = 22050;
-                if (audioObj.SampleRate != targetSR) await audioObj.ResampleAsync(targetSR);
+
+                // 2. Pre-Processing (Mono & Resampling) - Non-Blocking
+                if (audioObj.Channels != 1) await audioObj.RechannelAsync(1).ConfigureAwait(false);
+                if (audioObj.SampleRate != targetSR) await audioObj.ResampleAsync(targetSR).ConfigureAwait(false);
 
                 float[] mono = audioObj.Data;
                 int sampleRate = audioObj.SampleRate;
                 progress?.Report(0.10);
 
-                // 2. Feature Extraction (10% - 40%)
-                const int nFft = 1024;
-                const int hop = 512;
-                const int nMels = 128;
-
-                float[] paddedMono = new float[mono.Length + nFft];
-                Array.Copy(mono, 0, paddedMono, nFft / 2, mono.Length);
-
-                int fftBins = nFft / 2 + 1;
-                int totalFrames = 1 + (paddedMono.Length - nFft) / hop;
-
-                float[,] melFilter = BuildMelFilterBank(nMels, fftBins, sampleRate, nFft);
-                float[] melFlat = new float[totalFrames * nMels];
-                float[] window = new float[nFft];
-                for (int i = 0; i < nFft; i++) window[i] = 0.5f - 0.5f * (float) Math.Cos(2 * Math.PI * i / nFft);
-
-                System.Numerics.Complex[] fft = new System.Numerics.Complex[nFft];
-
-                for (int frame = 0; frame < totalFrames; frame++)
+                // 3. Feature Extraction (FFT & Mel) - In Hintergrund-Task auslagern
+                float[] melFlat = await Task.Run(() =>
                 {
-                    int offset = frame * hop;
-                    for (int i = 0; i < nFft; i++) fft[i] = new System.Numerics.Complex(paddedMono[offset + i] * window[i], 0);
+                    float[] padded = new float[mono.Length + nFft];
+                    Array.Copy(mono, 0, padded, nFft / 2, mono.Length);
 
-                    MathNet.Numerics.IntegralTransforms.Fourier.Forward(fft, MathNet.Numerics.IntegralTransforms.FourierOptions.Matlab);
+                    int fftBins = nFft / 2 + 1;
+                    int totalFrames = 1 + (padded.Length - nFft) / hop;
+                    float[,] melFilter = BuildMelFilterBank(nMels, fftBins, sampleRate, nFft);
+                    float[] output = new float[totalFrames * nMels];
 
-                    for (int m = 0; m < nMels; m++)
+                    float[] window = new float[nFft];
+                    for (int i = 0; i < nFft; i++) window[i] = 0.5f - 0.5f * (float) Math.Cos(2 * Math.PI * i / nFft);
+
+                    System.Numerics.Complex[] fft = new System.Numerics.Complex[nFft];
+
+                    for (int frame = 0; frame < totalFrames; frame++)
                     {
-                        double sum = 0;
-                        for (int b = 0; b < fftBins; b++)
-                        {
-                            double magSq = fft[b].Real * fft[b].Real + fft[b].Imaginary * fft[b].Imaginary;
-                            sum += magSq * melFilter[m, b];
-                        }
-                        melFlat[frame * nMels + m] = (float) Math.Log10(sum + 1e-10);
-                    }
-                    if (frame % 500 == 0) progress?.Report(0.10 + (0.30 * frame / totalFrames));
-                }
+                        int offset = frame * hop;
+                        for (int i = 0; i < nFft; i++) fft[i] = new System.Numerics.Complex(padded[offset + i] * window[i], 0);
 
-                // 3. ONNX Inference (40% - 70%)
+                        MathNet.Numerics.IntegralTransforms.Fourier.Forward(fft, MathNet.Numerics.IntegralTransforms.FourierOptions.Matlab);
+
+                        for (int m = 0; m < nMels; m++)
+                        {
+                            double sum = 0;
+                            for (int b = 0; b < fftBins; b++)
+                            {
+                                double magSq = fft[b].Real * fft[b].Real + fft[b].Imaginary * fft[b].Imaginary;
+                                sum += magSq * melFilter[m, b];
+                            }
+                            output[frame * nMels + m] = (float) Math.Log10(sum + 1e-10);
+                        }
+
+                        // Öfter reporten für flüssige Anzeige
+                        if (frame % 200 == 0) progress?.Report(0.10 + (0.30 * frame / totalFrames));
+                    }
+                    return output;
+                }).ConfigureAwait(false);
+
+                int totalFramesInMel = melFlat.Length / nMels;
+                progress?.Report(0.40);
+
+                // 4. ONNX Inference (Chunked) - GPU/DirectML ist von Natur aus async-freundlich
                 const int chunkSize = 1024;
                 const int chunkHop = 512;
                 List<float> activationCurve = new();
 
-                for (int start = 0; start < totalFrames; start += chunkHop)
-                {
-                    int currentSize = Math.Min(chunkSize, totalFrames - start);
-                    float[] chunk = new float[currentSize * nMels];
-                    Array.Copy(melFlat, start * nMels, chunk, 0, currentSize * nMels);
-
-                    var tensor = new DenseTensor<float>(chunk, [1, currentSize, nMels]);
-                    var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(this._session.InputMetadata.Keys.First(), tensor) };
-
-                    using var results = this._session.Run(inputs);
-                    activationCurve.AddRange(results.First().AsEnumerable<float>());
-
-                    progress?.Report(0.40 + (0.30 * start / totalFrames));
-                    if (totalFrames - start <= chunkSize) break;
-                }
-
-                // 4. Robuste Autokorrelation (70% - 100%)
-                double secondsPerFrame = (double) hop / sampleRate;
-                // Bereich 60 bis 200 BPM
-                int minLag = (int) (60.0 / (220.0 * secondsPerFrame));
-                int maxLag = (int) (60.0 / (50.0 * secondsPerFrame));
-
-                double[] acf = new double[maxLag + 2];
-                double maxVal = -1;
-                int bestLag = 0;
-
-                for (int lag = minLag; lag <= maxLag; lag++)
-                {
-                    double sum = 0;
-                    int count = 0;
-                    // Wir nutzen nur die erste Hälfte der Kurve für stabilere Korrelation
-                    int limit = Math.Min(activationCurve.Count - lag, activationCurve.Count / 2);
-                    for (int i = 0; i < limit; i++)
+                await Task.Run(() => {
+                    for (int start = 0; start < totalFramesInMel; start += chunkHop)
                     {
-                        sum += activationCurve[i] * activationCurve[i + lag];
-                        count++;
-                    }
-                    acf[lag] = sum / count;
+                        int currentSize = Math.Min(chunkSize, totalFramesInMel - start);
+                        float[] chunk = new float[currentSize * nMels];
+                        Array.Copy(melFlat, start * nMels, chunk, 0, currentSize * nMels);
 
-                    if (acf[lag] > maxVal)
-                    {
-                        maxVal = acf[lag];
-                        bestLag = lag;
-                    }
-                    if (lag % 10 == 0) progress?.Report(0.70 + (0.30 * (lag - minLag) / (maxLag - minLag)));
-                }
+                        var tensor = new DenseTensor<float>(chunk, [1, currentSize, nMels]);
+                        var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(this._session.InputMetadata.Keys.First(), tensor) };
 
-                // 5. Mathematische Peak-Verfeinerung (Sub-Frame Interpolation)
-                double refinedLag = bestLag;
-                if (bestLag > minLag && bestLag < maxLag)
+                        // session.Run blockiert den Thread kurzzeitig, daher im Task.Run
+                        using var results = this._session.Run(inputs);
+                        lock (activationCurve) activationCurve.AddRange(results.First().AsEnumerable<float>());
+
+                        progress?.Report(0.40 + (0.30 * start / totalFramesInMel));
+                        if (totalFramesInMel - start <= chunkSize) break;
+                    }
+                }).ConfigureAwait(false);
+
+                // 5. Robuste Autokorrelation - Schwere Mathematik im Hintergrund
+                double finalBpm = await Task.Run(() =>
                 {
-                    double alpha = acf[bestLag - 1];
-                    double beta = acf[bestLag];
-                    double gamma = acf[bestLag + 1];
+                    double secondsPerFrame = (double) hop / sampleRate;
+                    int minLag = (int) (60.0 / (220.0 * secondsPerFrame));
+                    int maxLag = (int) (60.0 / (50.0 * secondsPerFrame));
 
-                    // Quadratische Interpolation für den exakten Peak zwischen den Frames
-                    double p = 0.5 * (alpha - gamma) / (alpha - 2 * beta + gamma);
-                    refinedLag = bestLag + p;
-                }
+                    double[] acf = new double[maxLag + 2];
+                    double maxVal = -1;
+                    int bestLag = 0;
 
-                double bpm = 60.0 / (refinedLag * secondsPerFrame);
+                    for (int lag = minLag; lag <= maxLag; lag++)
+                    {
+                        double sum = 0;
+                        int limit = Math.Min(activationCurve.Count - lag, activationCurve.Count / 2);
+                        for (int i = 0; i < limit; i++)
+                        {
+                            sum += activationCurve[i] * activationCurve[i + lag];
+                        }
+                        acf[lag] = sum / limit;
 
-                // 6. Intelligente Oktaven-Korrektur (Vermeidung des 80 vs 160 Fehlers)
-                // Wir suchen, ob ein Peak bei der doppelten oder halben Frequenz stärker ist
-                while (bpm < 85) bpm *= 2;
-                while (bpm > 175) bpm /= 2;
+                        if (acf[lag] > maxVal)
+                        {
+                            maxVal = acf[lag];
+                            bestLag = lag;
+                        }
+                        if (lag % 5 == 0) progress?.Report(0.70 + (0.30 * (lag - minLag) / (maxLag - minLag)));
+                    }
 
-                StaticLogger.Log($"{audioObj.Name}: {bpm:F3} BPM detected via ACF-Refinement");
+                    // Sub-Frame Interpolation
+                    double refinedLag = bestLag;
+                    if (bestLag > minLag && bestLag < maxLag)
+                    {
+                        double alpha = acf[bestLag - 1];
+                        double beta = acf[bestLag];
+                        double gamma = acf[bestLag + 1];
+                        double p = 0.5 * (alpha - gamma) / (alpha - 2 * beta + gamma);
+                        refinedLag = bestLag + p;
+                    }
+
+                    double bpm = 60.0 / (refinedLag * secondsPerFrame);
+                    while (bpm < 85) bpm *= 2;
+                    while (bpm > 175) bpm /= 2;
+                    return bpm;
+                }).ConfigureAwait(false);
+
+                await StaticLogger.LogAsync($"{audioObj.Name}: {finalBpm:F3} BPM detected").ConfigureAwait(false);
                 progress?.Report(1.0);
-                return Math.Round(bpm, 3);
+                return Math.Round(finalBpm, 3);
             }
             catch (Exception ex)
             {
-                StaticLogger.Log($"Inference Error: {ex.Message}");
+                await StaticLogger.LogAsync(ex).ConfigureAwait(false);
                 return null;
             }
             finally
             {
-                if (audioObj != null) { this.AudioHandler.RemoveAudio(audioObj); audioObj.Dispose(); }
+                if (audioObj != null)
+                {
+                    this.AudioHandler.RemoveAudio(audioObj.Id);
+                    audioObj.Dispose();
+                }
             }
         }
-
 
 
         private static float[,] BuildMelFilterBank(int nMels, int fftBins, int sampleRate, int nFft)

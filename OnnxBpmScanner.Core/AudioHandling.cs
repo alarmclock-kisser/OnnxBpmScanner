@@ -15,7 +15,7 @@ namespace OnnxBpmScanner.Core
     {
         public static string ExportDirectory { get; set; } = Path.GetFullPath(Environment.GetEnvironmentVariable("SHARPAI_AUDIO_EXPORT_DIR") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic), "SharpAI_AudioExports"));
 
-        public readonly BindingList<AudioObj> Audios = new();
+        public readonly BindingList<AudioObj> Audios = [];
 
         private CancellationTokenSource? recordingCts;
 

@@ -22,7 +22,7 @@ namespace OnnxBpmScanner.Cli
             string? ressourcesDirectory = null;
             string? modelPath = "/default";
             string? audioDirectory = Directory.GetCurrentDirectory();
-            List<string> audioFiles = new List<string>();
+            List<string> audioFiles = [];
             int maxFiles = 0; // No limit
             int maxDurationMinutes = 0; // No limit
             int directMlDeviceId = 0;

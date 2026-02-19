@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="OnnxBpmScanner.Cli/OnnxBpmScanner.Cli.csproj" />
   <Project Path="OnnxBpmScanner.Core/OnnxBpmScanner.Core.csproj" />
+  <Project Path="OnnxBpmScanner.Forms/OnnxBpmScanner.Forms.csproj" Id="74645faa-51ba-49cf-8dc1-63df02e2fc1c" />
   <Project Path="OnnxBpmScanner.Runtime/OnnxBpmScanner.Runtime.csproj" />
 </Solution>

@@ -11,7 +11,7 @@ namespace OnnxBpmScanner.Core
     public static class StaticLogger
     {
         public static readonly ConcurrentDictionary<DateTime, string> LogEntries = new();
-        public static readonly BindingList<string> LogEntriesBindingList = new();
+        public static readonly BindingList<string> LogEntriesBindingList = [];
 
         public static event Action<string>? LogAdded;
 
