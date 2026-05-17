@@ -170,7 +170,7 @@ namespace OnnxBpmScanner.Runtime
 
                 // 4. ONNX Inference (Chunked) - GPU/DirectML ist von Natur aus async-freundlich
                 const int chunkSize = 1024;
-                const int chunkHop = 512;
+                const int chunkHop = 1024; // Keine Überlappung, um Zeitstreckung und Duplikate zu vermeiden!
                 List<float> activationCurve = new();
 
                 await Task.Run(() => {
@@ -221,16 +221,21 @@ namespace OnnxBpmScanner.Runtime
                         if (lag % 5 == 0) progress?.Report(0.70 + (0.30 * (lag - minLag) / (maxLag - minLag)));
                     }
 
-                    // Sub-Frame Interpolation
-                    double refinedLag = bestLag;
+                    // Sub-Frame Interpolation (Parabolische Interpolation)
+                    double p = 0;
                     if (bestLag > minLag && bestLag < maxLag)
                     {
                         double alpha = acf[bestLag - 1];
                         double beta = acf[bestLag];
                         double gamma = acf[bestLag + 1];
-                        double p = 0.5 * (alpha - gamma) / (alpha - 2 * beta + gamma);
-                        refinedLag = bestLag + p;
+                        // Parabolische Interpolation: p = 0.5 * (alpha - gamma) / (alpha - 2 * beta + gamma)
+                        double denominator = alpha - 2 * beta + gamma;
+                        if (denominator != 0)
+                        {
+                            p = 0.5 * (alpha - gamma) / denominator;
+                        }
                     }
+                    double refinedLag = bestLag + p;
 
                     double bpm = 60.0 / (refinedLag * secondsPerFrame);
                     while (bpm < 85) bpm *= 2;
