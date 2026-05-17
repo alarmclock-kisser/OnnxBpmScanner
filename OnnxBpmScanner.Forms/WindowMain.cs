@@ -1,4 +1,5 @@
 ﻿using OnnxBpmScanner.Core;
+using OnnxBpmScanner.Forms.Service;
 using OnnxBpmScanner.Runtime;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -18,6 +19,7 @@ namespace OnnxBpmScanner.Forms
 
         private Timer? InferenceTimer = null;
         private DateTime? InferenceStartTime = null;
+        private bool _allowClose;
 
 
         public WindowMain()
@@ -28,6 +30,7 @@ namespace OnnxBpmScanner.Forms
             this.ListBox_BindAudioFiles();
 
             this.Load += this.WindowMain_Load;
+            this.FormClosing += this.WindowMain_FormClosing;
 
         }
 
@@ -93,6 +96,61 @@ namespace OnnxBpmScanner.Forms
             this.comboBox_devices.Enabled = !this.Onnx.IsModelLoaded;
 
             StaticLogger.Log("Application started.");
+        }
+
+        public void ShowFromTray()
+        {
+            if (!this.Visible)
+            {
+                this.Show();
+            }
+
+            if (this.WindowState == FormWindowState.Minimized)
+            {
+                this.WindowState = FormWindowState.Normal;
+            }
+
+            this.BringToFront();
+            this.Activate();
+        }
+
+        public void ApplyServiceSettings(Settings settings, int? initializedDeviceId)
+        {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new Action(() => this.ApplyServiceSettings(settings, initializedDeviceId)));
+                return;
+            }
+
+            this.numericUpDown_round.Value = Math.Clamp((decimal) settings.Round, this.numericUpDown_round.Minimum, this.numericUpDown_round.Maximum);
+
+            int selectedIndex = initializedDeviceId ?? settings.DirectMlDeviceId;
+            if (selectedIndex >= 0 && selectedIndex < this.comboBox_devices.Items.Count)
+            {
+                this.comboBox_devices.SelectedIndex = selectedIndex;
+            }
+
+            bool isInitialized = initializedDeviceId.HasValue;
+            this.button_initialize.Text = isInitialized ? "Dispose" : "Initialize";
+            this.comboBox_devices.Enabled = !isInitialized;
+        }
+
+        public void CloseForExit()
+        {
+            this._allowClose = true;
+            this.Close();
+        }
+
+        private void WindowMain_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            if (this._allowClose || e.CloseReason != CloseReason.UserClosing)
+            {
+                return;
+            }
+
+            e.Cancel = true;
+            this.Hide();
+            StaticLogger.Log("Main window hidden to tray.");
         }
 
         private void ListBox_Audios_DrawItem(object? sender, DrawItemEventArgs e)

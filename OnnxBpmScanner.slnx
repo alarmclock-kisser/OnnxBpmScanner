@@ -3,4 +3,5 @@
   <Project Path="OnnxBpmScanner.Core/OnnxBpmScanner.Core.csproj" />
   <Project Path="OnnxBpmScanner.Forms/OnnxBpmScanner.Forms.csproj" Id="74645faa-51ba-49cf-8dc1-63df02e2fc1c" />
   <Project Path="OnnxBpmScanner.Runtime/OnnxBpmScanner.Runtime.csproj" />
+  <Project Path="OnnxBpmScanner.Shared/OnnxBpmScanner.Shared.csproj" Id="7ded5805-4993-43af-8d56-b00a09cb6b7e" />
 </Solution>
