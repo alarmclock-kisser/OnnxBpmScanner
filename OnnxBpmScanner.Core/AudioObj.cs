@@ -387,6 +387,188 @@ namespace OnnxBpmScanner.Core
             });
         }
 
+        public async Task TrimLeadingAndTrailingSilenceAsync(
+            float silenceThreshold = 0.0015f,
+            int minSilenceDurationMs = 350,
+            int analysisWindowMs = 20,
+            int analysisHopMs = 10,
+            float adaptiveNoiseMultiplier = 2.5f)
+        {
+            await Task.Run(() =>
+            {
+                try
+                {
+                    if (this.Data.Length == 0 || this.SampleRate <= 0 || this.Channels <= 0)
+                    {
+                        StaticLogger.Log($"Silence trim skipped for {this.Name}: audio buffer is empty or format is invalid.");
+                        return;
+                    }
+
+                    int samplesPerChannel = this.Data.Length / this.Channels;
+                    if (samplesPerChannel == 0)
+                    {
+                        StaticLogger.Log($"Silence trim skipped for {this.Name}: no samples available.");
+                        return;
+                    }
+
+                    int windowSize = Math.Max(1, (int) Math.Round(this.SampleRate * (analysisWindowMs / 1000.0)));
+                    int hopSize = Math.Max(1, (int) Math.Round(this.SampleRate * (analysisHopMs / 1000.0)));
+                    int minSilenceSamples = Math.Max(1, (int) Math.Round(this.SampleRate * (minSilenceDurationMs / 1000.0)));
+                    int frameCount = Math.Max(1, 1 + (int) Math.Ceiling(Math.Max(0, samplesPerChannel - windowSize) / (double) hopSize));
+
+                    float[] frameRms = new float[frameCount];
+                    float peakRms = 0f;
+
+                    for (int frame = 0; frame < frameCount; frame++)
+                    {
+                        int startSample = frame * hopSize;
+                        int endSample = Math.Min(samplesPerChannel, startSample + windowSize);
+                        if (startSample >= endSample)
+                        {
+                            continue;
+                        }
+
+                        double sumSquares = 0;
+                        int sampleCount = 0;
+                        for (int i = startSample; i < endSample; i++)
+                        {
+                            double monoSample = 0;
+                            int baseIndex = i * this.Channels;
+                            for (int ch = 0; ch < this.Channels; ch++)
+                            {
+                                monoSample += this.Data[baseIndex + ch];
+                            }
+
+                            monoSample /= this.Channels;
+                            sumSquares += monoSample * monoSample;
+                            sampleCount++;
+                        }
+
+                        if (sampleCount == 0)
+                        {
+                            continue;
+                        }
+
+                        float rms = (float) Math.Sqrt(sumSquares / sampleCount);
+                        frameRms[frame] = rms;
+                        if (rms > peakRms)
+                        {
+                            peakRms = rms;
+                        }
+                    }
+
+                    if (peakRms <= 0f)
+                    {
+                        StaticLogger.Log($"{this.Name}: trim start=0.00s end=0.00s (audio appears silent)");
+                        return;
+                    }
+
+                    float[] sortedRms = new float[frameRms.Length];
+                    Array.Copy(frameRms, sortedRms, frameRms.Length);
+                    Array.Sort(sortedRms);
+
+                    int percentileIndex = Math.Clamp((int) Math.Floor((sortedRms.Length - 1) * 0.2), 0, sortedRms.Length - 1);
+                    float noiseFloor = sortedRms[percentileIndex];
+                    float effectiveThreshold = Math.Max(silenceThreshold, Math.Max(noiseFloor * adaptiveNoiseMultiplier, peakRms * 0.01f));
+
+                    int minSilenceFrames = Math.Max(1, (int) Math.Ceiling(minSilenceSamples / (double) hopSize));
+                    int minActiveFrames = Math.Max(2, Math.Min(8, minSilenceFrames / 2));
+
+                    int firstActiveFrame = -1;
+                    for (int frame = 0; frame <= frameRms.Length - minActiveFrames; frame++)
+                    {
+                        bool isActiveRun = true;
+                        for (int offset = 0; offset < minActiveFrames; offset++)
+                        {
+                            if (frameRms[frame + offset] < effectiveThreshold)
+                            {
+                                isActiveRun = false;
+                                break;
+                            }
+                        }
+
+                        if (isActiveRun)
+                        {
+                            firstActiveFrame = frame;
+                            break;
+                        }
+                    }
+
+                    int lastActiveFrame = -1;
+                    for (int frame = frameRms.Length - minActiveFrames; frame >= 0; frame--)
+                    {
+                        bool isActiveRun = true;
+                        for (int offset = 0; offset < minActiveFrames; offset++)
+                        {
+                            if (frameRms[frame + offset] < effectiveThreshold)
+                            {
+                                isActiveRun = false;
+                                break;
+                            }
+                        }
+
+                        if (isActiveRun)
+                        {
+                            lastActiveFrame = frame + minActiveFrames - 1;
+                            break;
+                        }
+                    }
+
+                    if (firstActiveFrame < 0 || lastActiveFrame < 0 || firstActiveFrame > lastActiveFrame)
+                    {
+                        StaticLogger.Log($"{this.Name}: trim start=0.00s end=0.00s (no stable active section)");
+                        return;
+                    }
+
+                    int leadingSamples = firstActiveFrame * hopSize;
+                    int trailingStartSample = Math.Min(samplesPerChannel, (lastActiveFrame * hopSize) + windowSize);
+                    int trailingSamples = Math.Max(0, samplesPerChannel - trailingStartSample);
+
+                    if (leadingSamples < minSilenceSamples)
+                    {
+                        leadingSamples = 0;
+                    }
+
+                    if (trailingSamples < minSilenceSamples)
+                    {
+                        trailingSamples = 0;
+                        trailingStartSample = samplesPerChannel;
+                    }
+
+                    int trimmedSampleCount = samplesPerChannel - leadingSamples - trailingSamples;
+                    if (trimmedSampleCount <= 0)
+                    {
+                        StaticLogger.Log($"{this.Name}: trim start=0.00s end=0.00s (trim would remove full audio)");
+                        return;
+                    }
+
+                    if (leadingSamples == 0 && trailingSamples == 0)
+                    {
+                        StaticLogger.Log($"{this.Name}: trim start=0.00s end=0.00s");
+                        return;
+                    }
+
+                    int newLength = trimmedSampleCount * this.Channels;
+                    float[] trimmedData = new float[newLength];
+                    Array.Copy(this.Data, leadingSamples * this.Channels, trimmedData, 0, newLength);
+                    this.Data = trimmedData;
+
+                    double leadingSeconds = leadingSamples / (double) this.SampleRate;
+                    double trailingSeconds = trailingSamples / (double) this.SampleRate;
+                    StaticLogger.Log($"{this.Name}: trim start={leadingSeconds:F2}s end={trailingSeconds:F2}s");
+                }
+                catch (Exception ex)
+                {
+                    StaticLogger.Log("Failed to trim leading/trailing silence:");
+                    StaticLogger.Log(ex);
+                }
+            });
+        }
+
+        public async Task CutTrailingSilenceAsync(float silenceThreshold = 0.001f, int minSilenceDurationMs = 500)
+        {
+            await this.TrimLeadingAndTrailingSilenceAsync(silenceThreshold, minSilenceDurationMs);
+        }
 
 
         public bool WriteBpmTag(double bpm)

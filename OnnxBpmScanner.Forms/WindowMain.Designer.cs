@@ -43,7 +43,13 @@
             this.button_initialize = new Button();
             this.checkBox_writeTags = new CheckBox();
             this.button_clear = new Button();
+            this.numericUpDown_round = new NumericUpDown();
+            this.label_info_round = new Label();
+            this.label_info_duration = new Label();
+            this.numericUpDown_duration = new NumericUpDown();
             this.contextMenuStrip_audios.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize) this.numericUpDown_round).BeginInit();
+            ((System.ComponentModel.ISupportInitialize) this.numericUpDown_duration).BeginInit();
             this.SuspendLayout();
             // 
             // listBox_audios
@@ -128,6 +134,7 @@
             // 
             // listBox_log
             // 
+            this.listBox_log.Font = new Font("Bahnschrift Light SemiCondensed", 8.25F, FontStyle.Regular, GraphicsUnit.Point,  0);
             this.listBox_log.FormattingEnabled = true;
             this.listBox_log.HorizontalScrollbar = true;
             this.listBox_log.Location = new Point(358, 12);
@@ -179,11 +186,53 @@
             this.button_clear.UseVisualStyleBackColor = false;
             this.button_clear.Click += this.button_clear_Click;
             // 
+            // numericUpDown_round
+            // 
+            this.numericUpDown_round.DecimalPlaces = 3;
+            this.numericUpDown_round.Increment = new decimal(new int[] { 5, 0, 0, 131072 });
+            this.numericUpDown_round.Location = new Point(622, 376);
+            this.numericUpDown_round.Maximum = new decimal(new int[] { 1, 0, 0, 0 });
+            this.numericUpDown_round.Name = "numericUpDown_round";
+            this.numericUpDown_round.Size = new Size(70, 23);
+            this.numericUpDown_round.TabIndex = 12;
+            this.numericUpDown_round.Value = new decimal(new int[] { 25, 0, 0, 131072 });
+            // 
+            // label_info_round
+            // 
+            this.label_info_round.AutoSize = true;
+            this.label_info_round.Location = new Point(622, 358);
+            this.label_info_round.Name = "label_info_round";
+            this.label_info_round.Size = new Size(42, 15);
+            this.label_info_round.TabIndex = 13;
+            this.label_info_round.Text = "Round";
+            // 
+            // label_info_duration
+            // 
+            this.label_info_duration.AutoSize = true;
+            this.label_info_duration.Location = new Point(546, 358);
+            this.label_info_duration.Name = "label_info_duration";
+            this.label_info_duration.Size = new Size(69, 15);
+            this.label_info_duration.TabIndex = 15;
+            this.label_info_duration.Text = "Duration (s)";
+            // 
+            // numericUpDown_duration
+            // 
+            this.numericUpDown_duration.Location = new Point(546, 376);
+            this.numericUpDown_duration.Maximum = new decimal(new int[] { 600, 0, 0, 0 });
+            this.numericUpDown_duration.Name = "numericUpDown_duration";
+            this.numericUpDown_duration.Size = new Size(70, 23);
+            this.numericUpDown_duration.TabIndex = 14;
+            this.numericUpDown_duration.Value = new decimal(new int[] { 60, 0, 0, 0 });
+            // 
             // WindowMain
             // 
             this.AutoScaleDimensions = new SizeF(7F, 15F);
             this.AutoScaleMode = AutoScaleMode.Font;
             this.ClientSize = new Size(704, 441);
+            this.Controls.Add(this.label_info_duration);
+            this.Controls.Add(this.numericUpDown_duration);
+            this.Controls.Add(this.label_info_round);
+            this.Controls.Add(this.numericUpDown_round);
             this.Controls.Add(this.button_clear);
             this.Controls.Add(this.checkBox_writeTags);
             this.Controls.Add(this.button_initialize);
@@ -202,6 +251,8 @@
             this.Name = "WindowMain";
             this.Text = "Onnx BPM Scanner (using DirectML) (Forms UI)";
             this.contextMenuStrip_audios.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize) this.numericUpDown_round).EndInit();
+            ((System.ComponentModel.ISupportInitialize) this.numericUpDown_duration).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
         }
@@ -222,5 +273,9 @@
         private Button button_clear;
         private ContextMenuStrip contextMenuStrip_audios;
         private ToolStripMenuItem removeToolStripMenuItem;
+        private NumericUpDown numericUpDown_round;
+        private Label label_info_round;
+        private Label label_info_duration;
+        private NumericUpDown numericUpDown_duration;
     }
 }

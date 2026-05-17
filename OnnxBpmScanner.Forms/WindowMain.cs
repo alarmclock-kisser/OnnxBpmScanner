@@ -77,6 +77,11 @@ namespace OnnxBpmScanner.Forms
         // Events
         private void WindowMain_Load(object? sender, EventArgs e)
         {
+            if (SynchronizationContext.Current != null)
+            {
+                StaticLogger.SetUiContext(SynchronizationContext.Current);
+            }
+
             this.comboBox_devices.Items.Clear();
             this.comboBox_devices.Items.AddRange(this.Onnx.DirectMlDevices.ToArray());
             if (this.comboBox_devices.Items.Count > 0)
@@ -297,7 +302,9 @@ namespace OnnxBpmScanner.Forms
                         this.progressBar_inferencing.Value = Math.Clamp((int) (p * this.progressBar_inferencing.Maximum), 0, this.progressBar_inferencing.Maximum);
                     });
 
-                    double? bpm = await this.Onnx.RunInferenceBpmEstimateAsync(file, progress);
+                    float round = (float) this.numericUpDown_round.Value;
+                    int duration = (int) this.numericUpDown_duration.Value;
+                    double? bpm = await this.Onnx.RunInferenceBpmEstimateAsync(file, round, duration, progress);
                     sw.Stop();
 
                     // Optionally write tag

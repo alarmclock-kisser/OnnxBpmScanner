@@ -32,7 +32,11 @@ namespace OnnxBpmScanner.Core
 
             if (UiContext != null)
             {
-                UiContext.Post(_ => LogEntriesBindingList.Add(logEntry), null);
+                UiContext.Post(_ =>
+                {
+                    LogEntriesBindingList.Add(logEntry);
+                    LogAdded?.Invoke(logEntry);
+                }, null);
             }
             else
             {
@@ -41,9 +45,9 @@ namespace OnnxBpmScanner.Core
                 {
                     LogEntriesBindingList.Add(logEntry);
                 }
-            }
 
-            LogAdded?.Invoke(logEntry);
+                LogAdded?.Invoke(logEntry);
+            }
 
             Console.WriteLine(logEntry);
         }
