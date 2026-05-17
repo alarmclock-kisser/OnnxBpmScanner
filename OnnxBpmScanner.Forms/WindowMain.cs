@@ -154,7 +154,9 @@ namespace OnnxBpmScanner.Forms
         {
             if (this.InferenceStartTime.HasValue)
             {
-                this.label_elapsed.Text = $"Elapsed: {(DateTime.Now - this.InferenceStartTime.Value).TotalSeconds:0.0}s";
+                int total = this.AudioFileEntries.Count;
+                int scanned = this.AudioFileEntries.Count(e => e.scanned);
+                this.label_elapsed.Text = $"Elapsed: {(DateTime.Now - this.InferenceStartTime.Value).TotalSeconds:0.0}s | Scanned: {scanned}/{total}";
             }
             else
             {
